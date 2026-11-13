@@ -86,9 +86,10 @@
     transition: opacity .2s;
   }
   .err.show { opacity: 1; }
+  body.loading .card { visibility: hidden; }
 </style>
 </head>
-<body>
+<body class="loading">
   <div class="card">
     <h1>BLOOMLOOP</h1>
     <p class="tag">Private play</p>
@@ -119,50 +120,55 @@
     return out;
   }
 
-  async function decrypt(password, payload) {
+  function b64e(bytes) { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+
+  async function derive(password, payload) {
     const salt = b64(payload.salt);
-    const iv = b64(payload.iv);
-    const tag = b64(payload.tag);
-    const data = b64(payload.data);
-    const combined = new Uint8Array(data.length + tag.length);
-    combined.set(data, 0);
-    combined.set(tag, data.length);
     const base = await crypto.subtle.importKey(
       'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
     );
-    const key = await crypto.subtle.deriveKey(
+    return crypto.subtle.deriveKey(
       { name: 'PBKDF2', salt, iterations: payload.iter, hash: 'SHA-256' },
       base,
-      { name: 'AES-GCM', length: 256 },
-      false,
+      { name: 'AES-GCM', length: 256 }, true,
       ['decrypt']
     );
+  }
+  async function decryptKey(key, payload) {
+    const iv = b64(payload.iv), tag = b64(payload.tag), data = b64(payload.data);
+    const combined = new Uint8Array(data.length + tag.length); combined.set(data); combined.set(tag, data.length);
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, combined);
     return new TextDecoder().decode(plain);
   }
+  async function decrypt(password, payload) { return decryptKey(await derive(password, payload), payload); }
 
-  async function unlock(password, remember) {
+  async function unlock(password, remember, silent = false, cached = null) {
     hideErr();
     btn.disabled = true;
-    btn.textContent = '…';
+    if (!silent) btn.textContent = '…';
     try {
       const payload = await fetch('payload.json', { cache: 'no-store' }).then((r) => {
         if (!r.ok) throw new Error('load');
         return r.json();
       });
-      const html = await decrypt(password, payload);
+      let key = cached;
+      if (!key) key = await derive(password, payload);
+      const html = await decryptKey(key, payload);
+      try { const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key)); localStorage.setItem(KEY+'.key', JSON.stringify({salt:payload.salt,raw:b64e(raw)})); } catch (e) {}
       if (remember) {
-        try { sessionStorage.setItem(KEY, password); } catch (e) {}
+        try { sessionStorage.setItem(KEY, password); localStorage.setItem(KEY, password); } catch (e) {}
       }
       document.open();
       document.write(html);
       document.close();
     } catch (e) {
+      document.body.classList.remove('loading');
       btn.disabled = false;
       btn.textContent = 'Enter';
       showErr(e && e.message === 'load' ? 'Could not load the game. Try again.' : 'Wrong password');
       input.focus();
       input.select();
+      if (silent) throw e;
     }
   }
 
@@ -174,8 +180,16 @@
   });
 
   try {
-    const saved = sessionStorage.getItem(KEY);
-    if (saved) unlock(saved, false);
+    const boot = async () => {
+      const payload = await fetch('payload.json', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('load'); return r.json(); });
+      let cached = null;
+      try { const c = JSON.parse(localStorage.getItem(KEY+'.key') || 'null'); if (c && c.salt === payload.salt) cached = await crypto.subtle.importKey('raw', b64(c.raw), {name:'AES-GCM'}, false, ['decrypt']); } catch (e) {}
+      if (cached) { try { await unlock('', false, true, cached); return; } catch (e) {} }
+      const saved = sessionStorage.getItem(KEY) || localStorage.getItem(KEY);
+      if (saved) { try { await unlock(saved, false, true); return; } catch (e) {} }
+      document.body.classList.remove('loading');
+    };
+    boot().catch(() => document.body.classList.remove('loading'));
   } catch (e) {}
 })();
 </script>

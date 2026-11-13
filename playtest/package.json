@@ -1,0 +1,1 @@
+{"private":true,"type":"module","scripts":{"qa":"playwright test"},"devDependencies":{"@playwright/test":"^1.52.0"}}
