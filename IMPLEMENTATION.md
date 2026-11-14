@@ -2,7 +2,7 @@
 
 ## Files changed
 
-- `playtest/playwright.config.mjs` — retains the historical WebKit and iPhone Chromium projects and adds focused `chromium-iphone-13` and `desktop-chromium` projects for the journey spec.
+- `playtest/playwright.config.mjs` — keeps the historical `qa.spec.mjs` coverage in the legacy `mobile-webkit` and `chromium-fallback` projects, while excluding `journey.spec.mjs` from both. The focused `chromium-iphone-13` and `desktop-chromium` projects are the only journey projects.
 - `playtest/journey.spec.mjs` — covers locker/direct-game startup, title-to-play, one real pointer capture, natural Overbloom scoring, score-card coherence, restart, and page-error checks. Desktop Chromium uses mouse events; iPhone Chromium uses Chromium CDP touch input.
 
 No readable game source or decrypted HTML was copied into this repository. No v1 game fix was needed: the read-only source supports the requested journey and exposes the required read-only hooks.
@@ -23,7 +23,7 @@ cd playtest
 GAME_URL=http://127.0.0.1:8777/game/index.html?test=1 npx playwright test journey.spec.mjs --project=chromium-iphone-13 --project=desktop-chromium
 ```
 
-The existing suite remains available with `npm run qa` from `playtest` (using the already provisioned Playwright installation on the development box). Do not install dependencies or browsers on this host.
+The existing suite remains available with `npm run qa` from `playtest`. WebKit is included only when its Playwright executable exists and `ldd` reports no missing system libraries. If WebKit is unavailable, `npm run qa` prints a clear stderr note and omits `mobile-webkit`; it does not install browsers, libraries, or other dependencies. `PLAYWRIGHT_SKIP_WEBKIT=1` explicitly skips WebKit, while `PLAYWRIGHT_FORCE_WEBKIT=1` keeps the project enabled (for an operator or CI environment that has made WebKit usable). Historical `qa.spec.mjs` still runs in every enabled legacy project; the journey runs only in the two focused Chromium projects.
 
 ## Assumptions and limitations
 
