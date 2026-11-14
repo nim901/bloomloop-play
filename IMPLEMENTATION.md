@@ -3,13 +3,20 @@
 ## Files changed
 
 - `playtest/playwright.config.mjs` — retains the historical WebKit and iPhone Chromium projects and adds focused `chromium-iphone-13` and `desktop-chromium` projects for the journey spec.
-- `playtest/journey.spec.mjs` — covers load/reload recovery, title-to-play, one real pointer capture, natural Overbloom scoring, score-card coherence, restart, and page-error checks. Desktop Chromium uses mouse events; iPhone Chromium uses touch pointer events.
+- `playtest/journey.spec.mjs` — covers locker/direct-game startup, title-to-play, one real pointer capture, natural Overbloom scoring, score-card coherence, restart, and page-error checks. Desktop Chromium uses mouse events; iPhone Chromium uses Chromium CDP touch input.
 
 No readable game source or decrypted HTML was copied into this repository. No v1 game fix was needed: the read-only source supports the requested journey and exposes the required read-only hooks.
 
 ## Run
 
-From the repo root, after the box operator starts the existing decrypt-and-serve process:
+From the repo root, after the box operator starts the existing decrypt-and-serve process, the focused journey can start at the local public locker:
+
+```sh
+cd playtest
+LOCKER_URL=http://127.0.0.1:8777/ BLOOMLOOP_PASSWORD="$BLOOMLOOP_PASSWORD" npx playwright test journey.spec.mjs --project=chromium-iphone-13 --project=desktop-chromium
+```
+
+`LOCKER_URL` may instead be the live Pages locker URL (for example, `https://example.pages.dev/`). `BLOOMLOOP_PASSWORD` is env-only: supply it through the shell or CI secret; never put it in this repository or logs. With both locker variables unset, the journey retains the local direct-game path:
 
 ```sh
 cd playtest
@@ -20,7 +27,7 @@ The existing suite remains available with `npm run qa` from `playtest` (using th
 
 ## Assumptions and limitations
 
-- The journey relies on the deterministic tutorial trio in `?test=1` and waits for the real pressure system to reach Overbloom; it does not fake game-over state or write through `__bl`.
+- The direct-game path uses the deterministic tutorial trio in `?test=1`. The locker path unlocks the fresh game without appending a query that could interfere with unlock, and relies on the fresh-run tutorial trio. Both paths wait for the real pressure system to reach Overbloom; neither fakes game-over state or writes through `__bl`.
 - The two new projects match only `journey.spec.mjs`, so the long soak and historical tests are not duplicated there.
 - This run does not perform a live GitHub Pages deploy.
 
