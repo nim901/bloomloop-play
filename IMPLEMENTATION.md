@@ -23,7 +23,7 @@ cd playtest
 GAME_URL=http://127.0.0.1:8777/game/index.html?test=1 npx playwright test journey.spec.mjs --project=chromium-iphone-13 --project=desktop-chromium
 ```
 
-The existing suite remains available with `npm run qa` from `playtest`. WebKit is included only when its Playwright executable exists and `ldd` reports no missing system libraries. If WebKit is unavailable, `npm run qa` prints a clear stderr note and omits `mobile-webkit`; it does not install browsers, libraries, or other dependencies. `PLAYWRIGHT_SKIP_WEBKIT=1` explicitly skips WebKit, while `PLAYWRIGHT_FORCE_WEBKIT=1` keeps the project enabled (for an operator or CI environment that has made WebKit usable). Historical `qa.spec.mjs` still runs in every enabled legacy project; the journey runs only in the two focused Chromium projects.
+The existing suite remains available with `npm run qa` from `playtest`. WebKit is included only when its Playwright install and MiniBrowser ELF files exist and `ldd` reports no missing system libraries; the launcher script itself is not passed to `ldd`. If WebKit is unavailable, `npm run qa` prints a clear stderr note and omits `mobile-webkit`; it does not install browsers, libraries, or other dependencies. `PLAYWRIGHT_SKIP_WEBKIT=1` explicitly skips WebKit, while `PLAYWRIGHT_FORCE_WEBKIT=1` keeps an installed WebKit project enabled when its host-library check needs an explicit operator override. Historical `qa.spec.mjs` still runs in every enabled legacy project; the journey runs only in the two focused Chromium projects.
 
 ## Assumptions and limitations
 

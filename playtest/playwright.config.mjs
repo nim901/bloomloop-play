@@ -1,31 +1,91 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import { webkit } from 'playwright';
 
-function canLaunchWebkit() {
+const webkitLddDirectories = [
+  'minibrowser-gtk',
+  join('minibrowser-gtk', 'bin'),
+  join('minibrowser-gtk', 'lib'),
+  join('minibrowser-gtk', 'sys', 'lib'),
+  'minibrowser-wpe',
+  join('minibrowser-wpe', 'bin'),
+  join('minibrowser-wpe', 'lib'),
+  join('minibrowser-wpe', 'sys', 'lib'),
+];
+
+function isElf(filePath) {
+  let fileDescriptor;
+  try {
+    const header = Buffer.alloc(4);
+    fileDescriptor = openSync(filePath, 'r');
+    return readSync(fileDescriptor, header, 0, header.length, 0) === header.length &&
+      header.equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
+  } catch (_) {
+    return false;
+  } finally {
+    if (fileDescriptor !== undefined) closeSync(fileDescriptor);
+  }
+}
+
+function filesToCheck(directoryPath) {
+  if (!existsSync(directoryPath) || !statSync(directoryPath).isDirectory()) return [];
+  return readdirSync(directoryPath, { withFileTypes: true })
+    .filter(entry => entry.isFile() || entry.isSymbolicLink())
+    .map(entry => join(directoryPath, entry.name))
+    .filter(isElf);
+}
+
+function webkitExecutablePath() {
   let executablePath;
   try {
     executablePath = webkit.executablePath();
   } catch (_) {
-    return false;
+    return null;
   }
-  if (!existsSync(executablePath)) return false;
+  if (!existsSync(executablePath) || !statSync(executablePath).isFile()) return null;
+  const installDir = dirname(executablePath);
+  if (!existsSync(installDir) || !statSync(installDir).isDirectory()) return null;
+  return { executablePath, installDir };
+}
 
-  try {
-    const libraries = execFileSync('ldd', [executablePath], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return !/not found/.test(libraries);
-  } catch (_) {
-    return false;
-  }
+function canLaunchWebkit() {
+  const install = webkitExecutablePath();
+  if (!install) return false;
+
+  const directories = webkitLddDirectories.map(directory => join(install.installDir, directory));
+  const files = directories.flatMap(filesToCheck);
+  if (!files.length) return false;
+
+  return files.every(filePath => {
+    try {
+      const libraries = execFileSync('ldd', [filePath], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: {
+          ...process.env,
+          LD_LIBRARY_PATH: [
+            ...directories,
+            process.env.LD_LIBRARY_PATH,
+          ].filter(Boolean).join(':'),
+        },
+      });
+      return !/not found/.test(libraries);
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+function hasWebkitInstall() {
+  return webkitExecutablePath() !== null;
 }
 
 const skipWebkit = process.env.PLAYWRIGHT_SKIP_WEBKIT === '1';
 const forceWebkit = process.env.PLAYWRIGHT_FORCE_WEBKIT === '1';
-const webkitAvailable = !skipWebkit && (forceWebkit || canLaunchWebkit());
+const webkitInstalled = !skipWebkit && hasWebkitInstall();
+const webkitAvailable = webkitInstalled && (forceWebkit || canLaunchWebkit());
 
 if (skipWebkit) {
   process.stderr.write('Playwright: mobile-webkit skipped by PLAYWRIGHT_SKIP_WEBKIT=1.\n');
